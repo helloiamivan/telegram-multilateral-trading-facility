@@ -15,7 +15,9 @@ from tabulate import tabulate
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from forex_python.converter import CurrencyRates
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-import gemini
+import locale
+
+locale.setlocale( locale.LC_ALL, '' )
 
 CHAT_ID = '-1001183088830'
 PROJECT_ID = 'DarkPoolBot'
@@ -39,17 +41,12 @@ logger = logging.getLogger(__name__)
 INIT_REQUEST, BUY_SELL_REQUEST, CRYPTO_REQUEST, \
 PRICE_REQUEST, PAYMENT_REQUEST, NATIONALITY_REQUEST, \
 PHOTO_REQUEST, REGISTRATION_DONE, CHECK_INPUT, \
-ID_NUMBER_REQUEST, SUBMIT, CANCEL_ORDER = range(12)
-
-# Define keyboards here
-# reply_keyboard_submit_details = [
-# [InlineKeyboardButton("Register Trading Account",callback_data='Register')],
-# [InlineKeyboardButton("Submit Order",callback_data='Submit Order'),InlineKeyboardButton("View Orders",callback_data='View Orders')],
-# [InlineKeyboardButton("Cancel",callback_data='Cancel')]]
+ID_NUMBER_REQUEST, SUBMIT, CANCEL_ORDER, \
+CHECK_EXPIRY = range(13)
 
 reply_keyboard_submit_details = [
 [InlineKeyboardButton("Visit Our Website",url='http://hikari.mobi')],
-[InlineKeyboardButton("Submit Order",callback_data='Submit Order'),InlineKeyboardButton("Cancel Order",callback_data='Cancel Orders')],
+[InlineKeyboardButton("Create Order",callback_data='Submit Order'),InlineKeyboardButton("Cancel Order",callback_data='Cancel Orders')],
 [InlineKeyboardButton("View Orders",callback_data='View Orders'),InlineKeyboardButton("Exit",callback_data='Cancel')]]
 
 reply_keyboard_check_details = [
@@ -93,15 +90,6 @@ def check_if_user_registered(username):
         else:
             return False
     except:
-        return False
-
-def check_ref_price_valid(s):
-    if (s[0] == '+') or (s[0] == '-'):
-        if is_positive_number(s[1:len(s)]):
-            return True
-        else:
-            return False
-    else:
         return False
 
 def is_positive_number(s):
@@ -167,8 +155,17 @@ def init_choice(bot, update, user_data):
 
         # Check if user is registered with a trading account
         if check_if_user_registered(user.username) == True:
-            reply = ('Do you want to BUY or SELL cryptocurrencies?')
-            bot.editMessageText(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id,reply_markup=buysell_details)
+
+            btc_price = getCoinMarketPrice('BTC','USD')
+            eth_price = getCoinMarketPrice('ETH','USD')
+
+            reply = ('Do you want to *BUY* or *SELL* cryptocurrencies?\n\n' +
+                'Current BTC price is: *' + locale.currency(float(btc_price), grouping=True) + '*\n\n' +
+                'Current ETH price is: *' + locale.currency(float(eth_price), grouping=True) + '*\n' +
+                '_Source: CoinMarketCap_\n\n'+
+                'Press /cancel to abort')
+                
+            bot.editMessageText(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id,reply_markup=buysell_details,parse_mode=telegram.ParseMode.MARKDOWN)
             return BUY_SELL_REQUEST
         else:
             reply = ('Please register a trading account with us first before you can submit orders into the pool. Thank you!')
@@ -196,9 +193,9 @@ def init_choice(bot, update, user_data):
             orderbook_btc = pd.read_csv(LOCAL_FILE_PATH + 'BTC.csv',header=None)
             orderbook = pd.concat([orderbook_eth,orderbook_btc],ignore_index=True)
 
-            orderbook.columns = ['OrderID','Side','User','Coin','Quantity','Local_Price','Time','Epoch_Time','Status']
+            orderbook.columns = ['OrderID','Side','User','Coin','Quantity','Local_Price','Fiat','Time','Epoch_Time','Status']
             #orderbook['Price'] = orderbook['Local_Price'].astype(str) + ' ' + orderbook['Fiat'].astype(str)
-            orderbook['Price'] = orderbook['Local_Price'].astype(str)
+            orderbook['Price'] = '$' + orderbook['Local_Price'].astype(str)
             orderbook = orderbook.ix[(orderbook['User'] == user.username)].copy()
             orders = orderbook.ix[(orderbook['Status'] == 'OPEN')].copy()
             orders.sort_values(by=['Epoch_Time'],inplace=True)
@@ -285,7 +282,7 @@ def registration_done(bot,update,user_data):
         fields[1] = user_data['Name']
         fields[2] = user_data['Nationality']
         fields[3] = user_data['ID Number']
-        fields[4] = datetime.datetime.now().strftime("%H:%M, %d-%m-%y")
+        fields[4] = datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y")
         fields[5] = 'UNCONFIRMED'
 
         # Save data to order book
@@ -316,7 +313,7 @@ def cancel_order(bot,update,user_data):
 
         orderbook = pd.read_csv(LOCAL_FILE_PATH + cryptoFile + '.csv',header=None)
         orderbook = orderbook.set_index(0)
-        orderbook.columns = ['Side','User','Coin','Quantity','Local_Price','Time','Epoch_Time','Status']
+        orderbook.columns = ['Side','User','Coin','Quantity','Local_Price','Expiry','Time','Epoch_Time','Status']
         orderbook.ix[order_id,'Status'] = 'CANCELLED'
         orderbook.to_csv(LOCAL_FILE_PATH + cryptoFile + '.csv',header=False)
 
@@ -343,7 +340,8 @@ def buy_sell_choice(bot, update, user_data):
     choice = query.data
 
     user_data['Order'] = choice
-    reply = ('Please choose to *' + choice + '* BTC or ETH.')
+
+    reply = ('Please choose to *' + choice + '* BTC or ETH')
     bot.editMessageText(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id,parse_mode=telegram.ParseMode.MARKDOWN,reply_markup=crypto_details) 
     return CRYPTO_REQUEST
 
@@ -371,40 +369,49 @@ def price_choice(bot,update,user_data):
 
     else:
         user_data['Quantity'] = str(round(float(choice),4))
-        tickerStr = user_data['Cryptocurrency'] + 'USD'
-        r = gemini.PublicClient()
-        user_data['Current Market Price']  = str(r.get_ticker(tickerStr)['last'])
-        reply = ('We take our reference price from Gemini, please enter how much percentage deviation you wish to trade at.' +
-            '\n\nFor example, enter +3 if you wish to trade at Gemini price plus 3 percent. Or -3 if you wish to trade at minus 3 percent.' +
-            '\n\nFor reference, last traded price of ' + user_data['Cryptocurrency'] + ' from Gemini is: *' + user_data['Current Market Price'] + ' USD*')
+
+        reply = ('What USD price would you like to set your order at?\n\nPlease enter only numbers, note that your price will be rounded to 4 decimal places.')
+        update.message.reply_text(reply)
+
+        return CHECK_EXPIRY
+
+def check_expiry(bot,update,user_data):
+    choice = update.message.text
+
+    # Check if price is a number
+    if is_positive_number(choice)==False:
+        update.message.reply_text('Price must be a positive number! Please enter the price again or type /cancel to exit')
+        return CHECK_EXPIRY
+    else:
+        # Get the price as a string
+        user_data['Price'] = str(round(float(choice),4))
+
+        # Compute total order amount
+        user_data['Total Order Amount'] = locale.currency(round(float(user_data['Price']) * float(user_data['Quantity']),0), grouping=True)
+
+        reply = ("Please let us know when would you like your order to expire.\n\nWe support expiries from a minimum of 1 hour and up to a maximum of 30 days.\n\n"
+            "For example, please type '3h' for an order expiry of 3 hours, and '10d' for an expiry of 10 days. The expiry timer will only start when your order is submitted.")
+
         update.message.reply_text(reply,parse_mode=telegram.ParseMode.MARKDOWN)
 
         return CHECK_INPUT
 
 def check_input(bot, update, user_data):
-    choice = update.message.text
+    choice = update.message.text.lower()
 
-    # Check if price is a number
-    if check_ref_price_valid(choice)==False:
-        update.message.reply_text('Price must be in the correct format! (eg +3) Please enter the price again or type /cancel to exit')
-        return CHECK_INPUT
-    else:
-        # Get the price as a string
-        user_data['Price'] = choice[0] + str(round(float(choice[1:len(choice)]),4))
+    # Get the price as a string
+    user_data['Expiry'] = choice
 
-        # Compute total order amount
-        #user_data['Total Order Amount'] = str(round(float(user_data['Price']) * float(user_data['Quantity']),2)) + " USD"
+    # Add disclaimer
+    disclaimer = ("By pressing Confirm Submission, you accept our terms and conditions for using our OTC trading pool." + 
+        " Hit Cancel now if you do not accept the terms.")
 
-        # Add disclaimer
-        disclaimer = ("By pressing Confirm Submission, you accept our terms and conditions for using our OTC trading pool." + 
-            " Hit Cancel now if you do not accept the terms.")
+    reply = ("Please check the following details carefully before submitting your order:" + "\n" 
+        + "{}".format(facts_to_str(user_data)) + "\n" + disclaimer)
 
-        reply = ("Please check the following details carefully before submitting your order:" + "\n" 
-            + "{}".format(facts_to_str(user_data)) + "\n" + disclaimer)
-
-        update.message.reply_text(reply,parse_mode=telegram.ParseMode.MARKDOWN,reply_markup=markup_check_details)
-        
-        return SUBMIT
+    update.message.reply_text(reply,parse_mode=telegram.ParseMode.MARKDOWN,reply_markup=markup_check_details)
+    
+    return SUBMIT
 
 def done(bot, update, user_data):
     query = update.callback_query
@@ -419,7 +426,7 @@ def done(bot, update, user_data):
 
     elif selection == 'Confirm Submission':
         
-        fields = ['','','','','','','','','']
+        fields = ['','','','','','','','','','']
 
         try:
             orderbook = pd.read_csv(LOCAL_FILE_PATH + '\\'+user_data['Cryptocurrency']+'.csv',header=None)
@@ -435,16 +442,19 @@ def done(bot, update, user_data):
         fields[2] = user.username
         fields[3] = user_data['Cryptocurrency']
         fields[4] = user_data['Quantity']
-        fields[5] = str(user_data['Price']) + "%"
-        fields[6] = datetime.datetime.now().strftime("%H:%M on %d-%m-%y")
-        fields[7] = time.time()
-        fields[8] = 'OPEN'
+        fields[5] = user_data['Price']
+        fields[6] = user_data['Expiry']
+        fields[7] = datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y")
+        fields[8] = time.time()
+        fields[9] = 'OPEN'
 
         # If valid telegram handle
         if (fields[1] != None):
             bot.sendMessage(chat_id=CHAT_ID,text=('*[' + user_data['Order'] 
                 + '] ' + user_data['Quantity'] + ' ' + user_data['Cryptocurrency'] + ' @ ' 
-                + str(user_data['Price']) + '% *\n' 
+                + user_data['Price'] + ' ' + "USD"+ ' each*'  + '\n' 
+                + 'Total: ' + user_data['Total Order Amount'] + '\n'
+                + 'Expiry: ' + user_data['Expiry'] + '\n'
                 + 'Contact @' + user.username.replace('_','\\_') + '\n' 
                 + 'Order ID: ' + orderID + '\n'
                 + "Posted on _" + datetime.date.today().strftime("%B %d, %Y") + '_'),parse_mode=telegram.ParseMode.MARKDOWN)
@@ -570,6 +580,11 @@ def main():
             CANCEL_ORDER: [telegram.ext.MessageHandler(telegram.ext.Filters.text,
                                     cancel_order,
                                     pass_user_data=True),
+                       ],
+
+            CHECK_EXPIRY:[telegram.ext.MessageHandler(telegram.ext.Filters.text,
+                                    check_expiry,
+                                    pass_user_data=True)
                        ],
 
             CHECK_INPUT:[telegram.ext.MessageHandler(telegram.ext.Filters.text,
