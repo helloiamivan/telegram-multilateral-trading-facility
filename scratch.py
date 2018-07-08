@@ -1,3 +1,3 @@
-from web3.auto import w3
+import numpy as np
 
-w3.eth.getBlock('latest')
+print('hello')

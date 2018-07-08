@@ -17,6 +17,7 @@ from forex_python.converter import CurrencyRates
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import locale
 
+# Set locale time
 locale.setlocale( locale.LC_ALL, '' )
 
 CHAT_ID = '-1001183088830'
@@ -360,31 +361,37 @@ def crypto_choice(bot, update, user_data):
     return PRICE_REQUEST
 
 def price_choice(bot,update,user_data):
-    choice = update.message.text
+    choice = update.message.text.lower()
 
-    if is_positive_number(choice) == False:
+    if is_positive_number(choice) == True:
+        user_data['Quantity'] = str(round(float(choice),4))
+
+        reply = ('What USD price would you like to set your order at?\n\nPlease enter "m" for market orders or only numbers, note that your price will be rounded to 4 decimal places.\n\n'
+                'Current BTC price is: *' + locale.currency(float(btc_price), grouping=True) + '*\n\n' +
+                'Current ETH price is: *' + locale.currency(float(eth_price), grouping=True) + '*\n' +
+                '_Source: CoinMarketCap_\n\n')
+       
+        update.message.reply_text(reply)
+        return CHECK_EXPIRY
+
+    else:
         reply = 'Sorry, please only enter a positive number for quantity. Try again or type /cancel to exit.'
         update.message.reply_text(reply)
         return PRICE_REQUEST
 
-    else:
-        user_data['Quantity'] = str(round(float(choice),4))
-
-        reply = ('What USD price would you like to set your order at?\n\nPlease enter only numbers, note that your price will be rounded to 4 decimal places.')
-        update.message.reply_text(reply)
-
-        return CHECK_EXPIRY
-
 def check_expiry(bot,update,user_data):
-    choice = update.message.text
+    choice = update.message.text.lower()
 
     # Check if price is a number
-    if is_positive_number(choice)==False:
-        update.message.reply_text('Price must be a positive number! Please enter the price again or type /cancel to exit')
+    if is_positive_number(choice)==False and choice != 'm' :
+        update.message.reply_text('Price must be a positive number! For market orders, please enter "M". Please enter the price again or type /cancel to exit')
         return CHECK_EXPIRY
     else:
         # Get the price as a string
-        user_data['Price'] = str(round(float(choice),4))
+        if choice == 'm':
+            user_data['Price'] = choice
+        else:
+            user_data['Price'] = str(round(float(choice),4))           
 
         # Compute total order amount
         user_data['Total Order Amount'] = locale.currency(round(float(user_data['Price']) * float(user_data['Quantity']),0), grouping=True)
