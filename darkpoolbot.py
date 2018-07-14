@@ -17,10 +17,11 @@ from forex_python.converter import CurrencyRates
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import locale
 
+# Set locale time
 locale.setlocale( locale.LC_ALL, '' )
 
 CHAT_ID = '-1001183088830'
-PROJECT_ID = 'DarkPoolBot'
+PROJECT_ID = 'hikari-clientside-py-telegram-bot'
 admins = ['helloiamivan','flickerz','benjiteo']
 
 # File paths to save to (databases)
@@ -57,8 +58,9 @@ buysell_choice = [
 [InlineKeyboardButton("BUY",callback_data='BUY'),InlineKeyboardButton("SELL",callback_data='SELL')]]
 
 crypto_choice = [
-[InlineKeyboardButton("Bitcoin (BTC)",callback_data='BTC')],
-[InlineKeyboardButton("Ethereum (ETH)",callback_data='ETH')]]
+[InlineKeyboardButton("BTC/USD",callback_data='BTC')],
+[InlineKeyboardButton("ETH/USD",callback_data='ETH')],
+[InlineKeyboardButton("ETH/BTC",callback_data='ETHBTC')]]
 
 cancel_order_choice = [InlineKeyboardButton("Go Back",callback_data='Go Back')]
 
@@ -158,10 +160,12 @@ def init_choice(bot, update, user_data):
 
             btc_price = getCoinMarketPrice('BTC','USD')
             eth_price = getCoinMarketPrice('ETH','USD')
+            ethbtc_price = getCoinMarketPrice('ETH','BTC')
 
             reply = ('Do you want to *BUY* or *SELL* cryptocurrencies?\n\n' +
-                'Current BTC price is: *' + locale.currency(float(btc_price), grouping=True) + '*\n\n' +
-                'Current ETH price is: *' + locale.currency(float(eth_price), grouping=True) + '*\n' +
+                'Current BTC/USD price is: *' + locale.currency(float(btc_price), grouping=True) + '*\n\n' +
+                'Current ETH/USD price is: *' + locale.currency(float(eth_price), grouping=True) + '*\n\n' +
+                'Current ETH/BTC price is *' + ethbtc_price + '*\n' +
                 '_Source: CoinMarketCap_\n\n'+
                 'Press /cancel to abort')
                 
@@ -187,46 +191,41 @@ def init_choice(bot, update, user_data):
 
     elif (choice == 'View Orders') | (choice == 'Cancel Orders'):
 
-        try:
-            # Read data to order book
-            orderbook_eth = pd.read_csv(LOCAL_FILE_PATH + 'ETH.csv',header=None)
-            orderbook_btc = pd.read_csv(LOCAL_FILE_PATH + 'BTC.csv',header=None)
-            orderbook = pd.concat([orderbook_eth,orderbook_btc],ignore_index=True)
+        # Read data to order book
+        orderbook_eth = pd.read_csv(LOCAL_FILE_PATH + 'ETH.csv',header=None)
+        orderbook_btc = pd.read_csv(LOCAL_FILE_PATH + 'BTC.csv',header=None)
+        orderbook_ethbtc = pd.read_csv(LOCAL_FILE_PATH + 'ETHBTC.csv',header=None)
+        orderbook = pd.concat([orderbook_eth,orderbook_btc,orderbook_ethbtc],ignore_index=True)
 
-            orderbook.columns = ['OrderID','Side','User','Coin','Quantity','Local_Price','Fiat','Time','Epoch_Time','Status']
-            #orderbook['Price'] = orderbook['Local_Price'].astype(str) + ' ' + orderbook['Fiat'].astype(str)
-            orderbook['Price'] = '$' + orderbook['Local_Price'].astype(str)
-            orderbook = orderbook.ix[(orderbook['User'] == user.username)].copy()
-            orders = orderbook.ix[(orderbook['Status'] == 'OPEN')].copy()
-            orders.sort_values(by=['Epoch_Time'],inplace=True)
+        orderbook.columns = ['OrderID','Side','User','Coin','Quantity','Price','Fiat','Time','Epoch_Time','Status']
+        orderbook.loc[orderbook['Coin'] == 'ETHBTC','Price'] = 'B' + orderbook['Price'].astype(str)
+        orderbook.loc[orderbook['Coin'] != 'ETHBTC','Price'] = '$' + orderbook['Price'].astype(str)
+        orderbook = orderbook.ix[(orderbook['User'] == user.username)].copy()
+        orders = orderbook.ix[(orderbook['Status'] == 'OPEN')].copy()
+        orders.sort_values(by=['Epoch_Time'],inplace=True)
 
-            # If there are no orders
-            if orders.empty:
-                reply = ('You have not posted any orders yet. Click submit order to post your order into the pool.')
-                bot.sendMessage(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id,reply_markup=markup_submit_details)
-                return INIT_REQUEST
-
-            else:
-                orders = orders[['OrderID','Side','Coin', 'Quantity', 'Price','Time']].copy()
-                # Descending time
-                orders = orders.iloc[::-1].copy()
-                prettyprint_orders = tabulate(orders,tablefmt='simple',headers='keys',showindex=False,stralign='left',numalign='left')
-                
-                if choice == 'View Orders':
-                    reply = ('Here are your orders:\n\n' + prettyprint_orders)
-                    bot.sendMessage(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id,reply_markup=markup_submit_details)
-                    return INIT_REQUEST
-
-                if choice == 'Cancel Orders':
-                    reply = ('Please enter the order ID of the order you wish to cancel below. Press /cancel to abort!:\n\n' + prettyprint_orders)
-                    bot.sendMessage(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id)
-                    user_data['Valid Order ID'] = orders.OrderID.tolist()
-                    return CANCEL_ORDER
-
-        except:
+        # If there are no orders
+        if orders.empty:
             reply = ('You have not posted any orders yet. Click submit order to post your order into the pool.')
             bot.sendMessage(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id,reply_markup=markup_submit_details)
             return INIT_REQUEST
+
+        else:
+            orders = orders[['OrderID','Side','Coin', 'Quantity', 'Price','Time']].copy()
+            # Descending time
+            orders = orders.iloc[::-1].copy()
+            prettyprint_orders = tabulate(orders,tablefmt='simple',headers='keys',showindex=False,stralign='left',numalign='left')
+            
+            if choice == 'View Orders':
+                reply = ('Here are your orders:\n\nNote that all times are in UTC\n\n' + prettyprint_orders)
+                bot.sendMessage(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id,reply_markup=markup_submit_details)
+                return INIT_REQUEST
+
+            if choice == 'Cancel Orders':
+                reply = ('Please enter the order ID of the order you wish to cancel below. Note that all times are in UTC Press /cancel to abort!:\n\n' + prettyprint_orders)
+                bot.sendMessage(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id)
+                user_data['Valid Order ID'] = orders.OrderID.tolist()
+                return CANCEL_ORDER
 
     else:
         pass
@@ -302,12 +301,17 @@ def cancel_order(bot,update,user_data):
     user = update.message.from_user
 
     if order_id in user_data['Valid Order ID']:
-        crypto = order_id[0]
+        if len(order_id) == 6:
+            crypto = order_id[0] + order_id[1]
+        else:
+            crypto = order_id[0]
 
         if crypto == 'B':
             cryptoFile = 'BTC'
         elif crypto == 'E':
             cryptoFile = 'ETH'
+        elif crypto == 'EB':
+            cryptoFile = 'ETHBTC'           
         else:
             raise('Unknown file to open when cancelling order!')
 
@@ -341,7 +345,7 @@ def buy_sell_choice(bot, update, user_data):
 
     user_data['Order'] = choice
 
-    reply = ('Please choose to *' + choice + '* BTC or ETH')
+    reply = ('Please choose to *' + choice + '* the following pairs available below.')
     bot.editMessageText(text=reply,chat_id=query.message.chat_id,message_id=query.message.message_id,parse_mode=telegram.ParseMode.MARKDOWN,reply_markup=crypto_details) 
     return CRYPTO_REQUEST
 
@@ -360,37 +364,51 @@ def crypto_choice(bot, update, user_data):
     return PRICE_REQUEST
 
 def price_choice(bot,update,user_data):
-    choice = update.message.text
+    choice = update.message.text.lower()
 
-    if is_positive_number(choice) == False:
+    if is_positive_number(choice) == True:
+        user_data['Quantity'] = str(round(float(choice),4))
+
+        if user_data['Cryptocurrency'] == 'ETHBTC':
+            coin_price = getCoinMarketPrice('ETH','BTC')
+        else:
+            coin_price = locale.currency(float(getCoinMarketPrice(user_data['Cryptocurrency'],'USD')), grouping=True)
+
+        reply = ('What price would you like to set your order at?\n\nPlease enter "m" for market orders or only numbers for prices, note that your price will be rounded to 4 decimal places.\n\n'
+                'Current ' + user_data['Cryptocurrency'] + ' price is: ' + coin_price + '\n' +
+                'Source: CoinMarketCap\n\n')
+       
+        update.message.reply_text(reply)
+        return CHECK_EXPIRY
+
+    else:
         reply = 'Sorry, please only enter a positive number for quantity. Try again or type /cancel to exit.'
         update.message.reply_text(reply)
         return PRICE_REQUEST
 
-    else:
-        user_data['Quantity'] = str(round(float(choice),4))
-
-        reply = ('What USD price would you like to set your order at?\n\nPlease enter only numbers, note that your price will be rounded to 4 decimal places.')
-        update.message.reply_text(reply)
-
-        return CHECK_EXPIRY
-
 def check_expiry(bot,update,user_data):
-    choice = update.message.text
+    choice = update.message.text.lower()
 
     # Check if price is a number
-    if is_positive_number(choice)==False:
-        update.message.reply_text('Price must be a positive number! Please enter the price again or type /cancel to exit')
+    if is_positive_number(choice)==False and choice != 'm' :
+        update.message.reply_text('Price must be a positive number! For market orders, please enter "M". Please enter the price again or type /cancel to exit')
         return CHECK_EXPIRY
     else:
         # Get the price as a string
-        user_data['Price'] = str(round(float(choice),4))
+        if choice == 'm':
+            user_data['Price'] = 'Market'
+            user_data['Total Order Amount'] = 'Market'         
 
-        # Compute total order amount
-        user_data['Total Order Amount'] = locale.currency(round(float(user_data['Price']) * float(user_data['Quantity']),0), grouping=True)
+        else:
+            user_data['Price'] = str(round(float(choice),4))
+            if user_data['Cryptocurrency'] == 'ETHBTC':
+                user_data['Total Order Amount'] = str(round(float(user_data['Price']) * float(user_data['Quantity']),4)) + " BTC"
+            else:
+                user_data['Total Order Amount'] = locale.currency(round(float(user_data['Price']) * float(user_data['Quantity']),0), grouping=True)          
 
         reply = ("Please let us know when would you like your order to expire.\n\nWe support expiries from a minimum of 1 hour and up to a maximum of 30 days.\n\n"
-            "For example, please type '3h' for an order expiry of 3 hours, and '10d' for an expiry of 10 days. The expiry timer will only start when your order is submitted.")
+            "For example, please type '3h' for an order expiry of 3 hours, and '10d' for an expiry of 10 days. Type 'GTC' if you wish for your order to be good till cancelled.\n\n"
+            "Note that the expiry timer will only start when your order is submitted successfully.")
 
         update.message.reply_text(reply,parse_mode=telegram.ParseMode.MARKDOWN)
 
@@ -434,7 +452,10 @@ def done(bot, update, user_data):
         except:
             ordercount = 0
         
-        orderID = user_data['Cryptocurrency'][0] + "%04d" % (ordercount,)
+        if user_data['Cryptocurrency'] == 'ETHBTC':
+            orderID = 'EB'+ "%04d" % (ordercount,)
+        else:
+            orderID = user_data['Cryptocurrency'][0] + "%04d" % (ordercount,)
 
         # Fill in the list of information
         fields[0] = orderID
@@ -448,11 +469,19 @@ def done(bot, update, user_data):
         fields[8] = time.time()
         fields[9] = 'OPEN'
 
+        if user_data['Price'] == 'Market':
+            price_string = 'Market*'
+        else:
+            if user_data['Cryptocurrency'] == 'ETHBTC':
+                price_string = user_data['Price'] + ' BTC each*'
+            else:
+                price_string = user_data['Price'] + ' USD each*'
+
         # If valid telegram handle
         if (fields[1] != None):
             bot.sendMessage(chat_id=CHAT_ID,text=('*[' + user_data['Order'] 
                 + '] ' + user_data['Quantity'] + ' ' + user_data['Cryptocurrency'] + ' @ ' 
-                + user_data['Price'] + ' ' + "USD"+ ' each*'  + '\n' 
+                + price_string + '\n' 
                 + 'Total: ' + user_data['Total Order Amount'] + '\n'
                 + 'Expiry: ' + user_data['Expiry'] + '\n'
                 + 'Contact @' + user.username.replace('_','\\_') + '\n' 
