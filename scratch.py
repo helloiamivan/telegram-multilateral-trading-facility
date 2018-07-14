@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import pickle
 import numpy as np
 import pandas as pd
@@ -20,3 +21,8 @@ orders = orders[['OrderID','Side','Coin', 'Quantity', 'Price','Time']].copy()
 orders = orders.iloc[::-1].copy()
 prettyprint_orders = tabulate(orders,tablefmt='simple',headers='keys',showindex=False,stralign='left',numalign='left')
 print(prettyprint_orders)
+=======
+import numpy as np
+
+print('hello')
+>>>>>>> 84fab7c8321b9671321ac7c5bb2d18b449a9bc25

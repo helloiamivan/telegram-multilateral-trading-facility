@@ -369,6 +369,7 @@ def price_choice(bot,update,user_data):
     if is_positive_number(choice) == True:
         user_data['Quantity'] = str(round(float(choice),4))
 
+<<<<<<< HEAD
         if user_data['Cryptocurrency'] == 'ETHBTC':
             coin_price = getCoinMarketPrice('ETH','BTC')
         else:
@@ -377,6 +378,12 @@ def price_choice(bot,update,user_data):
         reply = ('What price would you like to set your order at?\n\nPlease enter "m" for market orders or only numbers for prices, note that your price will be rounded to 4 decimal places.\n\n'
                 'Current ' + user_data['Cryptocurrency'] + ' price is: ' + coin_price + '\n' +
                 'Source: CoinMarketCap\n\n')
+=======
+        reply = ('What USD price would you like to set your order at?\n\nPlease enter "m" for market orders or only numbers, note that your price will be rounded to 4 decimal places.\n\n'
+                'Current BTC price is: *' + locale.currency(float(btc_price), grouping=True) + '*\n\n' +
+                'Current ETH price is: *' + locale.currency(float(eth_price), grouping=True) + '*\n' +
+                '_Source: CoinMarketCap_\n\n')
+>>>>>>> 84fab7c8321b9671321ac7c5bb2d18b449a9bc25
        
         update.message.reply_text(reply)
         return CHECK_EXPIRY
@@ -396,8 +403,14 @@ def check_expiry(bot,update,user_data):
     else:
         # Get the price as a string
         if choice == 'm':
+<<<<<<< HEAD
             user_data['Price'] = 'Market'
             user_data['Total Order Amount'] = 'Market'         
+=======
+            user_data['Price'] = choice
+        else:
+            user_data['Price'] = str(round(float(choice),4))           
+>>>>>>> 84fab7c8321b9671321ac7c5bb2d18b449a9bc25
 
         else:
             user_data['Price'] = str(round(float(choice),4))
