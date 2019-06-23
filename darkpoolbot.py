@@ -22,10 +22,10 @@ locale.setlocale( locale.LC_ALL, '' )
 
 CHAT_ID = '-1001183088830'
 PROJECT_ID = 'hikari-clientside-py-telegram-bot'
-admins = ['helloiamivan','flickerz','benjiteo']
+admins = ['helloiamivan']
 
 # File paths to save to (databases)
-TELEGRAM_TOKEN = "599340995:AAFopcld9vDueAgyaPSBBN0XJtRsg-cd0k0"
+TELEGRAM_TOKEN = BOT_API
 LOCAL_FILE_PATH = 'C:\\Users\\Administrator\\Dropbox\\'+PROJECT_ID+'\\Output\\OrderBooks\\'
 KYC_FILE_PATH = 'C:\\Users\\Administrator\\Dropbox\\'+PROJECT_ID+'\\KYC\\'
 
